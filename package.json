@@ -1,0 +1,16 @@
+{
+  "name": "v8-serialization-api",
+  "version": "1.0.0",
+  "description": "🌐 Node.js' node:v8 module extracted for use anywhere",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "tsx": "^3.12.7",
+    "typescript": "^5.0.4"
+  }
+}
