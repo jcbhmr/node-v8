@@ -1,0 +1,40 @@
+{
+  "name": "@jcbhmr/v8-value-serializer",
+  "version": "1.0.0",
+  "description": "📲 V8 C++ ValueSerializer and ValueDeserializer ported to JavaScript",
+  "keywords": [
+    "v8",
+    "value",
+    "serializer",
+    "deserializer",
+    "serialize",
+    "deserialize",
+    "extracted"
+  ],
+  "homepage": "https://jcbhmr.github.io/v8-value-serializer/",
+  "bugs": "https://github.com/jcbhmr/v8-value-serializer/issues",
+  "repository": "github:jcbhmr/v8-value-serializer",
+  "license": "MIT",
+  "author": "Jacob Hummer <jcbhmr@outlook.com> (https://jcbhmr.me/)",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./*.js": "./dist/*.js",
+    "./internal/*": null
+  },
+  "scripts": {
+    "build-docs": "typedoc",
+    "prepack": "tsc",
+    "start": "tsx --test --watch **/*.test.ts",
+    "pretest": "prettier --ignore-path .gitignore -w .",
+    "test": "tsc --noEmit && tsx --test **/*.test.ts"
+  },
+  "devDependencies": {
+    "prettier": "^2.8.8",
+    "prettier-plugin-jsdoc": "^0.4.2",
+    "prettier-plugin-packagejson": "^2.4.3",
+    "tsx": "^3.12.7",
+    "typedoc": "^0.24.7",
+    "typescript": "^5.1.3"
+  }
+}
