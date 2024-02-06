@@ -7,8 +7,8 @@
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "NodeNext",
     "isolatedModules": true,
-    "strict": false,
-    "skipLibCheck": true
+    "strict": true,
+    "skipLibCheck": true,
   },
   "include": ["src"]
 }

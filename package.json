@@ -1,10 +1,21 @@
 {
   "name": "@node4web/v8",
+  "imports": {
+    "#index.js": {
+      "node": "node:v8",
+      "default": "./dist/index.default.js"
+    },
+    "#node:buffer": {
+      "node": "node:buffer",
+      "default": "@node4web/buffer"
+    }
+  },
   "exports": {
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "format": "prettier -w ."
   },
   "devDependencies": {
     "prettier": "^3.2.5",
