@@ -100,6 +100,21 @@ enum  ErrorTag {
   End = '.'.charCodeAt(0),
 };
 
+function getRegExpFlagsBitfield(regexp: RegExp) {
+  const bits = {
+    __proto__: null,
+    d: 0,
+    g: 1,
+    i: 2,
+    m: 4,
+    s: 32,
+    u: 16,
+    y: 8,
+    v: 0,
+  }
+  return [...regexp.flags].reduce((a, x) => a + bits[x], 0)
+}
+
 class ValueSerializer {
     #treatArrayBufferViewsAsHostObjects: boolean
     buffer: ArrayBuffer | null
@@ -408,6 +423,320 @@ class ValueSerializer {
         }
 
         this.throwDataCloneError(MessageTemplate.DataCloneError, receiver)
+    }
+
+    writeJSObject(object: object) {
+      return this.writeJSObjectSlow(object)
+    }
+
+    writeJSObjectSlow(object: object) {
+      this.writeTag(SerializationTag.BeginJSObject)
+      let propertiesWritten = 0
+      const keys = Object.getOwnPropertyNames(object)
+      if (!keys || (propertiesWritten = this.writeJSObjectPropertiesSlow(object, keys)) == null) {
+        return null
+      }
+      this.writeTag(SerializationTag.EndJSObject)
+      this.writeVariantUint32(propertiesWritten)
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSArray(array: any[]) {
+      const length = array.length
+
+      const shouldSerializeDensely = !ArrayPrototypeHasHoleyElements(array)
+
+      if (false && shouldSerializeDensely) {
+        this.writeTag(SerializationTag.BeginDenseJSArray)
+        this.writeVariantUint32(length)
+        let i = 0
+      } else {
+        this.writeTag(SerializationTag.BeginSparseJSArray)
+        this.writeVariantUint32(length)
+        const keys = Object.getOwnPropertyNames(array)
+        let propertiesWritten = 0
+        if (!keys || (propertiesWritten = this.writeJSObjectPropertiesSlow(array, keys)) == null) {
+          return null
+        }
+        this.writeTag(SerializationTag.EndSparseJSArray)
+        this.writeVariantUint32(propertiesWritten)
+        this.writeVariantUint32(length)
+      }
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSDate(date: Date) {
+      this.writeTag(SerializationTag.Date)
+      this.writeDouble(date.valueOf())
+    }
+
+    writeJSPrimitiveWrapper(value: String | Boolean | Number | Symbol | BigInt) {
+      const innerValue = value.valueOf()
+      if (innerValue === true) {
+        this.writeTag(SerializationTag.TrueObject)
+      } else if (innerValue === false) {
+        this.writeTag(SerializationTag.FalseObject)
+      } else if (typeof innerValue === "number") {
+        this.writeTag(SerializationTag.NumberObject)
+        this.writeDouble(innerValue)
+      } else if (typeof innerValue === "bigint") {
+        this.writeTag(SerializationTag.BigIntObject)
+        this.writeBigIntContents(innerValue)
+      } else if (typeof innerValue === "string") {
+        this.writeTag(SerializationTag.StringObject)
+        this.writeString(innerValue)
+      } else {
+        this.throwDataCloneError(MessageTemplate.DataCloneError, value)
+      }
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSRegExp(regexp: RegExp) {
+      this.writeTag(SerializationTag.RegExp)
+      this.writeString(regexp.source)
+      this.writeVariantUint32(getRegExpFlagsBitfield(regexp))
+    }
+
+    writeJSMap(jsMap: Map) {
+      const table = new Map(jsMap)
+      const length = table.size * 2
+      const entries = new Array(length)
+      {
+        let resultIndex = 0
+        for (const [key, value] of entries) {
+          entries[resultIndex++] = key
+          entries[resultIndex++] = value
+        }
+      }
+      
+      this.writeTag(SerializationTag.BeginJSMap)
+      for (let i = 0; i < length; i++) {
+        if (!this.writeObject(entries[i])) {
+          return null
+        }
+      }
+      this.writeTag(SerializationTag.EndJSMap)
+      this.writeVariantUint32(length)
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSSet(jsSet: Set) {
+      const table = new Set(jsSet)
+      const length = table.size
+      const entries = [...table]
+
+      this.writeTag(SerializationTag.BeginJSSet)
+      for (let i = 0; i < length; i++) {
+        if (!this.writeObject(entries[i])) {
+          return null
+        }
+      }
+      this.writeTag(SerializationTag.EndJSSet)
+      this.writeVariantUint32(length)
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSArrayBuffer(arrayBuffer: ArrayBuffer) {
+      if (ArrayBufferPrototypeIsShared(arrayBuffer)) {
+        if (!this.delegate) {
+          return this.throwDataCloneError(MessageTemplate.DataCloneError, arrayBuffer)
+        }
+
+        let index: number | null
+        try {
+          index = this.delegate.getSharedArrayBufferId(arrayBuffer)
+        } catch (error) {
+          return null
+        }
+
+        this.writeTag(SerializationTag.SharedArrayBuffer)
+        this.writeVariantUint32(index)
+        this.throwIfOutOfMemory()
+        return 
+      }
+
+      const transferEntry = this.arrayBufferTransferMap.get(arrayBuffer)
+      if (transferEntry) {
+        this.writeTag(SerializationTag.ArrayBufferTransfer)
+        this.writeVariantUint32(transferEntry)
+        this.throwIfOutOfMemory()
+        return
+      }
+      if (ArrayBufferPrototypeWasDetatched(arrayBuffer)) {
+        this.throwDataCloneError(MessageTemplate.DataCloneErrorDetachedArrayBuffer)
+      }
+      const byteLength = arrayBuffer.byteLength
+      if (byteLength > 2 ** 32 - 1) {
+        return this.throwDataCloneError(MessageTemplate.DataCloneError, arrayBuffer)
+      }
+      if (arrayBuffer.resizable) {
+        const maxByteLength = arrayBuffer.maxByteLength
+        if (maxByteLength > 2 ** 32 - 1) {
+          this.throwDataCloneError(MessageTemplate.DataCloneError, arrayBuffer)
+        }
+
+        this.writeTag(SerializationTag.ResizableArrayBuffer)
+        this.writeVariantUint32(byteLength)
+        this.writeVariantUint32(maxByteLength)
+        this.writeRawBytes(new Uint8Array(arrayBuffer))
+        this.throwIfOutOfMemory()
+        return
+      }
+      this.writeTag(SerializationTag.ArrayBuffer)
+      this.writeVariantUint32(byteLength)
+      this.writeRawBytes(new Uint8Array(arrayBuffer))
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSArrayBufferView(view: ArrayBufferView) {
+      if (this.#treatArrayBufferViewsAsHostObjects) {
+        return this.writeHostObject(view)
+      }
+      this.writeTag(SerializationTag.ArrayBufferView)
+      let tag = ArrayBufferViewTag.Int8Array
+      if (isJSTypedArray(view)) {
+        switch (view[Symbol.toStringTag]) {
+          case "Uint8Array":
+            tag = ArrayBufferViewTag.Uint8Array
+            break
+          case "Uint8ClampedArray":
+            tag = ArrayBufferViewTag.Uint8ClampedArray
+            break
+          case "Int8Array":
+            tag = ArrayBufferViewTag.Int8Array
+            break
+          case "Uint16Array":
+            tag = ArrayBufferViewTag.Uint16Array
+            break
+          case "Int16Array":
+            tag = ArrayBufferViewTag.Int16Array
+            break
+          case "Uint32Array":
+            tag = ArrayBufferViewTag.Uint32Array
+            break
+          case "Int32Array":
+            tag = ArrayBufferViewTag.Int32Array
+            break
+          case "BigUint64Array":
+            tag = ArrayBufferViewTag.BigUint64Array
+            break
+          case "BigInt64Array":
+            tag = ArrayBufferViewTag.BigInt64Array
+            break
+          case "Float32Array":
+            tag = ArrayBufferViewTag.Float32Array
+            break
+          case "Float64Array":
+            tag = ArrayBufferViewTag.Float64Array
+            break
+        }
+      } else {
+        if (view.buffer instanceof SharedArrayBuffer) {
+          this.throwDataCloneError(MessageTemplate.DataCloneError, view)
+        }
+
+        tag = ArrayBufferViewTag.DataView
+      }
+      this.writeVariantUint8(tag)
+      this.writeVariantUint32(view.byteOffset)
+      this.writeVariantUint32(view.byteLength)
+      const flags = 0
+      this.writeVariantUint32(flags)
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSError(error: Error | DOMException) {
+      const stack = error.stack
+      const message = error.message
+      const cause = error.cause
+
+      this.writeTag(SerializationTag.Error)
+
+      const name = error.name
+      if (name == null) {
+        return null
+      }
+
+      if (name === "EvalError") {
+        this.writeVariantUint8(ErrorTag.EvalErrorPrototype)
+      } else if (name === "RangeError") {
+        this.writeVariantUint8(ErrorTag.RangeErrorPrototype)
+      } else if (name === "ReferenceError") {
+        this.writeVariantUint8(ErrorTag.ReferenceErrorPrototype)
+      } else if (name === "SyntaxError") {
+        this.writeVariantUint8(ErrorTag.SyntaxErrorPrototype)
+      } else if (name === "TypeError") {
+        this.writeVariantUint8(ErrorTag.TypeErrorPrototype)
+      } else if (name === "URIError") {
+        this.writeVariantUint8(ErrorTag.UriErrorPrototype)
+      } else {
+        // Nothing. Error prototype is the default.
+      }
+
+      if (message != null) {
+        this.writeVariantUint8(ErrorTag.Message)
+        this.writeString(message)
+      }
+
+      if (stack != null) {
+        this.writeVariantUint8(ErrorTag.Stack)
+        this.writeString(stack)
+      }
+
+      if (cause != null) {
+        this.writeVariantUint8(ErrorTag.Cause)
+        if (!this.writeObject(cause)) {
+          return null
+        }
+      }
+
+      this.writeVariantUint8(ErrorTag.End)
+      this.throwIfOutOfMemory()
+    }
+
+    writeJSSharedStruct(sharedStruct: object) {
+      return this.writeSharedObject(sharedStruct)
+    }
+
+    writeJSSharedArray(sharedArray: any[]) {
+      return this.writeSharedObject(sharedArray)
+    }
+
+    writeWASMModule(object: WebAssembly.Module) {
+      if (this.delegate == null) {
+        this.throwDataCloneError(MessageTemplate.DataCloneError, object)
+      }
+
+      let transferId: number
+      try {
+        transferId= this.delegate.getWASMModuleTransferId(object)
+      } catch (error) {
+        return null
+      }
+      const id = transferId
+      if (id != null) {
+        this.writeTag(SerializationTag.WasmModuleTransfer)
+        this.writeVariantUint32(id)
+        return true
+      }
+      this.throwIfOutOfMemory()
+    }
+
+    writeWASMMemory(object: WebAssembly.Memory) {
+      if (object.buffer instanceof SharedArrayBuffer) {
+        this.throwDataCloneError(MessageTemplate.DataCloneError, object)
+        return
+      }
+
+      this.writeTag(SerializationTag.WasmMemoryTransfer)
+      this.writeZigZagInt32(object.buffer.byteLength / (64 * 1024))
+      this.writeByte(0)
+      return this.writeJSReceiver(object.buffer)
+    }
+
+    writeSharedObject(object: object) {
+      
+
     }
 }
 
