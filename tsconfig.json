@@ -13,7 +13,6 @@
     "skipLibCheck": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist"],
   "typedocOptions": {
     "entryPoints": ["src/*.ts"],
     "out": "docs/dist",
