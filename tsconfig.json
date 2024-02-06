@@ -3,19 +3,12 @@
     "outDir": "dist",
     "declaration": true,
     "target": "ESNext",
-    "module": "ESNext",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "moduleResolution": "nodenext",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
+    "module": "NodeNext",
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "NodeNext",
     "isolatedModules": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true
   },
-  "include": ["src"],
-  "typedocOptions": {
-    "entryPoints": ["src/*.ts"],
-    "out": "docs/dist",
-    "skipErrorChecking": true
-  }
+  "include": ["src"]
 }
