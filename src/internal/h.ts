@@ -87,7 +87,26 @@ export const InstanceTypeChecker = {
 }
 
 export function ObjectPrototypeInstanceType(object: any): InstanceType {
-
+  switch (object) {
+    case true:
+    case false:
+    case null:
+    case undefined:
+      return InstanceType.ODDBALL_TYPE
+  }
+  switch (typeof object) {
+    case "bigint": return InstanceType.BIGINT_TYPE
+    case "number": return InstanceType.HEAP_NUMBER_TYPE
+  }
+  switch (object.constructor) {
+    case BigInt:
+    case String:
+    case Number:
+    case Boolean:
+    case Symbol:
+      return InstanceType.JS_PRIMITIVE_WRAPPER_TYPE
+    case Map: return InstanceType.JS_MAP_TYPE
+  }
 }
 
 export function StringFlatten(string: string) {
